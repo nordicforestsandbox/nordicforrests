@@ -5,11 +5,11 @@ const fileToBase64 = (fileData: string): string => {
 };
 
 export const removeObject = async (originalImageBase64: string, maskImageBase64: string, mimeType: string): Promise<string> => {
-  if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable is not set.");
+  if (!process.env.VERCEL_PUBLIC_API_KEY) {
+    throw new Error("VERCEL_PUBLIC_API_KEY environment variable is not set. Please add it to your Vercel project settings.");
   }
 
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.VERCEL_PUBLIC_API_KEY });
 
   const textPart = {
     text: "You are an expert at image inpainting. The user has provided a main image and a second mask image. The red area in the mask image indicates the object to be removed from the main image. Please remove the object and replace it with a realistic background that seamlessly blends with the surroundings. Output only the modified main image."
