@@ -1,0 +1,5 @@
+{
+  "name": "NordicForests",
+  "description": "An AI-powered tool to remove any object from any image instantly. Upload an image, brush over the object you want to remove, and download the clean, AI-generated result.",
+  "requestFramePermissions": []
+}
