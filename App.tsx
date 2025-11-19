@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import { AppStep } from './types';
 import FileUpload from './components/FileUpload';
@@ -143,6 +144,14 @@ const App: React.FC = () => {
     setStep(AppStep.UPLOAD);
   }, []);
 
+  const handleAuthError = useCallback(() => {
+    const aistudio = (window as any).aistudio;
+    // Only attempt to reset the key if we are in the environment that supports key selection
+    if (aistudio) {
+      setHasKey(false);
+    }
+  }, []);
+
   const renderStep = () => {
     switch (step) {
       case AppStep.UPLOAD:
@@ -152,7 +161,7 @@ const App: React.FC = () => {
             handleStartOver();
             return null;
         }
-        return <ImageEditor imageFile={originalImage} onComplete={handleProcessingComplete} />;
+        return <ImageEditor imageFile={originalImage} onComplete={handleProcessingComplete} onAuthError={handleAuthError} />;
       case AppStep.RESULT:
          if (!originalImage || !editedImage) {
             handleStartOver();
