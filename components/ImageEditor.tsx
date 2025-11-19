@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { removeObject } from '../services/geminiService';
 import { UndoIcon, TrashIcon, RedoIcon } from './Icons';
@@ -7,9 +8,10 @@ import Spinner from './Spinner';
 interface ImageEditorProps {
   imageFile: File;
   onComplete: (originalImageUrl: string, editedImageUrl: string) => void;
+  onAuthError?: () => void;
 }
 
-const ImageEditor: React.FC<ImageEditorProps> = ({ imageFile, onComplete }) => {
+const ImageEditor: React.FC<ImageEditorProps> = ({ imageFile, onComplete, onAuthError }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const imageCanvasRef = useRef<HTMLCanvasElement>(null);
   const drawingCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -106,7 +108,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageFile, onComplete }) => {
     const ctx = drawingCanvasRef.current?.getContext('2d');
     if (!ctx) return;
 
-    ctx.strokeStyle = 'rgba(239, 68, 68, 0.7)';
+    ctx.strokeStyle = 'rgba(239, 68, 68, 1.0)'; // Solid red for better visibility by AI
     ctx.lineWidth = brushSize;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -193,32 +195,54 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ imageFile, onComplete }) => {
 
     try {
       const originalImage = await loadImage(imageFile);
+      
+      // Optimize: Resize large images to prevent API payload limits and timeouts
+      // Max dimension 1024px is usually sufficient for quality edits and much faster/reliable
+      const MAX_DIMENSION = 1024;
+      let width = originalImage.naturalWidth;
+      let height = originalImage.naturalHeight;
 
-      // 1. Create full-resolution original image base64
-      const originalCanvas = document.createElement('canvas');
-      originalCanvas.width = originalImage.naturalWidth;
-      originalCanvas.height = originalImage.naturalHeight;
-      const originalCtx = originalCanvas.getContext('2d');
-      if (!originalCtx) throw new Error('Could not get original canvas context');
-      originalCtx.drawImage(originalImage, 0, 0);
+      if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+        const ratio = width / height;
+        if (width > height) {
+          width = MAX_DIMENSION;
+          height = Math.round(MAX_DIMENSION / ratio);
+        } else {
+          height = MAX_DIMENSION;
+          width = Math.round(MAX_DIMENSION * ratio);
+        }
+      }
+
+      // Create a temporary canvas to combine original image and mask at optimized size
+      const compositeCanvas = document.createElement('canvas');
+      compositeCanvas.width = width;
+      compositeCanvas.height = height;
+      const ctx = compositeCanvas.getContext('2d');
+      if (!ctx) throw new Error('Could not get composite canvas context');
+      
+      // 1. Draw original image scaled
+      ctx.drawImage(originalImage, 0, 0, width, height);
+      
+      // 2. Draw the drawing canvas (mask) on top, scaled to fit
+      ctx.drawImage(drawingCanvas, 0, 0, width, height);
+      
       const mimeType = imageFile.type === 'image/png' ? 'image/png' : 'image/jpeg';
-      const originalImageBase64 = originalCanvas.toDataURL(mimeType, 1.0);
-
-      // 2. Create full-resolution mask image base64 by scaling the drawing canvas
-      const maskCanvas = document.createElement('canvas');
-      maskCanvas.width = originalImage.naturalWidth;
-      maskCanvas.height = originalImage.naturalHeight;
-      const maskCtx = maskCanvas.getContext('2d');
-      if (!maskCtx) throw new Error('Could not get mask canvas context');
+      // Use decent quality (0.9) to ensure mask is sharp enough but keep size low
+      const markedImageBase64 = compositeCanvas.toDataURL(mimeType, 0.9);
       
-      maskCtx.drawImage(drawingCanvas, 0, 0, maskCanvas.width, maskCanvas.height);
-      const maskImageBase64 = maskCanvas.toDataURL('image/png', 1.0); // Mask is always a lossless PNG
-      
-      const resultBase64 = await removeObject(originalImageBase64, maskImageBase64, mimeType);
+      const resultBase64 = await removeObject(markedImageBase64, mimeType);
       onComplete(URL.createObjectURL(imageFile), resultBase64);
 
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
+      setError(errorMessage);
+      
+      // Detect Auth errors to potentially reset the key selection
+      if (errorMessage.includes('Requested entity was not found') || 
+          errorMessage.includes('API key') || 
+          errorMessage.includes('403')) {
+          onAuthError?.();
+      }
       console.error(err);
     } finally {
       setIsLoading(false);
