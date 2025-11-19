@@ -1,31 +1,27 @@
+
 import { GoogleGenAI, Modality } from "@google/genai";
 
 const fileToBase64 = (fileData: string): string => {
-  return fileData.split(',')[1];
+  if (fileData.includes(',')) {
+    return fileData.split(',')[1];
+  }
+  return fileData;
 };
 
-export const removeObject = async (originalImageBase64: string, maskImageBase64: string, mimeType: string): Promise<string> => {
-  if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable is not set. Please make sure it is configured correctly.");
-  }
-
+export const removeObject = async (markedImageBase64: string, mimeType: string): Promise<string> => {
+  // We do not manually check for process.env.API_KEY here. 
+  // The SDK or the execution environment will handle validation, 
+  // and we want to allow the key to be injected dynamically if applicable.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   const textPart = {
-    text: "You are an expert at image inpainting. The user has provided a main image and a second mask image. The red area in the mask image indicates the object to be removed from the main image. Please remove the object and replace it with a realistic background that seamlessly blends with the surroundings. Output only the modified main image."
+    text: "The provided image has an area marked with red brush strokes. Remove the object covered by the red strokes and fill the area with a realistic background that blends seamlessly with the surroundings. The result should be the clean image without any red marks."
   };
 
-  const originalImagePart = {
+  const imagePart = {
     inlineData: {
-      data: fileToBase64(originalImageBase64),
+      data: fileToBase64(markedImageBase64),
       mimeType: mimeType,
-    },
-  };
-  
-  const maskImagePart = {
-    inlineData: {
-      data: fileToBase64(maskImageBase64),
-      mimeType: 'image/png', // Mask is always PNG
     },
   };
 
@@ -33,7 +29,7 @@ export const removeObject = async (originalImageBase64: string, maskImageBase64:
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
-        parts: [textPart, originalImagePart, maskImagePart],
+        parts: [textPart, imagePart],
       },
       config: {
         responseModalities: [Modality.IMAGE],
@@ -51,6 +47,7 @@ export const removeObject = async (originalImageBase64: string, maskImageBase64:
     }
   } catch (error) {
     console.error("Gemini API call failed:", error);
-    throw new Error("Failed to process the image with the AI model. Please try again.");
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    throw new Error(`Failed to process the image: ${errorMessage}`);
   }
 };
